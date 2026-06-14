@@ -85,6 +85,8 @@ h1{font-size:20px;color:#f59e0b;letter-spacing:3px;text-shadow:0 0 10px #f59e0b8
       <button class="btn p" id="btn-end">End Turn ↵</button>
       <button class="btn" id="btn-zoom">🗺 Zoom Out (full map)</button>
       <button class="btn" id="btn-convert" disabled>Convert Picks (at tile)</button>
+      <button class="btn" id="btn-camp-hearts" disabled>Camp: Convert Picks → Hearts</button>
+      <button class="btn" id="btn-camp-reroll" disabled>Camp: Reroll up to 5 Dice</button>
       <button class="btn" id="btn-grove-rest" disabled>Grove: Rest &amp; Reroll Hearts</button>
       <button class="btn d" id="btn-cancel" style="display:none">✕ Cancel Mode</button>
     </div>
@@ -253,7 +255,7 @@ function initGame(){
     map:genMap(sx,sy),
     rev:Array.from({length:MH},()=>new Array(MW).fill(false)),
     player:{x:sx,y:sy,inWater:false,gasDir:null},
-    dice:{picks:rollDice(10),hearts:rollDice(3),torches:[],dynamite:[],vines:[],weapons:[]},
+    dice:{picks:rollDice(10),hearts:rollDice(10),torches:[],dynamite:[],vines:[],weapons:[]},
     enemies:[],
     mode:'normal',   // normal|moving|torch|dynamite|combat|convert
     movement:0,
@@ -487,6 +489,11 @@ function openConvert(){
     maxN=3+adjWaterCount(x,y);
     hint=` (water adj bonus: max ${maxN})`;
   }
+  else if(tile===T.MINING_CAMP){
+    res='hearts';
+    maxN=G.dice.picks.length;
+    hint=' (convert any number)';
+  }
   else return;
 
   if(!G.dice.picks.length){log('No picks to convert!','w');return}
@@ -530,6 +537,49 @@ function doConvert(){
   log(`Converted ${newDice.length} pick(s) → ${RC[resource].name}.`,'g');
   closeModal();G.convertRes=null;
   redrawUI();render();
+}
+
+function openCampReroll(){
+  if(G.map[G.player.y][G.player.x]!==T.MINING_CAMP)return;
+  const MAX=5;
+  const sel={picks:[],hearts:[]};
+  openModal('Mining Camp — Reroll Dice',
+    `Select up to ${MAX} pick or heart dice to reroll. The dice stay in their resource slot but get new values.`);
+  const c=document.getElementById('modal-dice');
+  c.innerHTML='';
+  const addGroup=(res,arr,selArr)=>{
+    if(!arr.length)return;
+    const lbl=document.createElement('div');
+    lbl.style.cssText='width:100%;font-size:10px;color:#6b7280;margin-top:6px';
+    lbl.textContent=RC[res].name+':';c.appendChild(lbl);
+    arr.forEach((d,i)=>{
+      const el=makeDie(res,d.v);
+      el.onclick=()=>{
+        const idx=selArr.indexOf(i);
+        const total=sel.picks.length+sel.hearts.length;
+        if(idx===-1){
+          if(total>=MAX){log(`Max ${MAX} dice.`,'w');return}
+          selArr.push(i);el.classList.add('selected');
+        }else{selArr.splice(idx,1);el.classList.remove('selected')}
+        document.getElementById('modal-extra').textContent=
+          `Selected: ${sel.picks.length+sel.hearts.length} / ${MAX}`;
+      };
+      c.appendChild(el);
+    });
+  };
+  addGroup('picks',G.dice.picks,sel.picks);
+  addGroup('hearts',G.dice.hearts,sel.hearts);
+  document.getElementById('modal-extra').textContent=`Selected: 0 / ${MAX}`;
+  setModalBtns([
+    {label:'Cancel',fn:closeModal},
+    {label:'Reroll',cls:'p',fn:()=>{
+      if(!sel.picks.length&&!sel.hearts.length){log('Select at least 1 die.','w');return}
+      sel.picks.forEach(i=>{G.dice.picks[i].v=1+Math.floor(Math.random()*6)});
+      sel.hearts.forEach(i=>{G.dice.hearts[i].v=1+Math.floor(Math.random()*6)});
+      log(`Rerolled ${sel.picks.length+sel.hearts.length} die/dice at the mining camp.`,'g');
+      closeModal();redrawUI();render();
+    }}
+  ]);
 }
 
 function groveRest(){
@@ -866,8 +916,11 @@ function redrawUI(){
   }
 
   // Convert button
-  const convertTiles=[T.COAL,T.IRON,T.BRIMSTONE,T.GROVE];
+  const convertTiles=[T.COAL,T.IRON,T.BRIMSTONE,T.GROVE,T.MINING_CAMP];
+  const atCamp=G.map[y]?.[x]===T.MINING_CAMP;
   document.getElementById('btn-convert').disabled=!convertTiles.includes(G.map[y]?.[x])||!G.dice.picks.length;
+  document.getElementById('btn-camp-hearts').disabled=!atCamp||!G.dice.picks.length;
+  document.getElementById('btn-camp-reroll').disabled=!atCamp||(G.dice.picks.length+G.dice.hearts.length===0);
   document.getElementById('btn-grove-rest').disabled=G.map[y]?.[x]!==T.GROVE||!G.dice.hearts.length;
 }
 
@@ -925,6 +978,8 @@ document.getElementById('btn-zoom').onclick=()=>{
   render();
 };
 document.getElementById('btn-convert').onclick=openConvert;
+document.getElementById('btn-camp-hearts').onclick=openConvert;
+document.getElementById('btn-camp-reroll').onclick=openCampReroll;
 document.getElementById('btn-grove-rest').onclick=groveRest;
 document.getElementById('btn-cancel').onclick=()=>{
   G.mode=G.movement>0?'moving':'normal';
