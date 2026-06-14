@@ -83,6 +83,7 @@ h1{font-size:20px;color:#f59e0b;letter-spacing:3px;text-shadow:0 0 10px #f59e0b8
     <div class="sec">Actions</div>
     <div id="actions">
       <button class="btn p" id="btn-end">End Turn ↵</button>
+      <button class="btn" id="btn-zoom">🗺 Zoom Out (full map)</button>
       <button class="btn" id="btn-convert" disabled>Convert Picks (at tile)</button>
       <button class="btn" id="btn-grove-rest" disabled>Grove: Rest &amp; Reroll Hearts</button>
       <button class="btn d" id="btn-cancel" style="display:none">✕ Cancel Mode</button>
@@ -105,17 +106,23 @@ h1{font-size:20px;color:#f59e0b;letter-spacing:3px;text-shadow:0 0 10px #f59e0b8
 <script>
 // ── CONSTANTS ────────────────────────────────────────────────
 const MW=50,MH=50;
-let TS=13,VW=520,VH=580;
+let VW=520,VH=580;
+let zoomMode='close'; // 'close'=10×10 | 'full'=whole map
+
 function sizeCanvas(){
   const mobile=window.innerWidth<=720;
-  if(mobile){
-    VW=window.innerWidth;
-    VH=Math.round(window.innerHeight*0.52);
-    TS=Math.max(8,Math.floor(VW/44));
-  }else{VW=520;VH=580;TS=13;}
+  if(mobile){VW=window.innerWidth;VH=Math.round(window.innerHeight*0.52);}
+  else{VW=520;VH=Math.min(580,window.innerHeight-10);}
   canvas.width=VW;canvas.height=VH;
   if(G.map)render();
 }
+
+function getTS(){
+  if(zoomMode==='full') return Math.max(6,Math.min(Math.floor(VW/MW),Math.floor(VH/MH)));
+  // close: 10 tiles across the shorter dimension
+  return Math.floor(Math.min(VW,VH)/10);
+}
+
 window.addEventListener('resize',sizeCanvas);
 
 const T={EMPTY:0,SOLID:1,RUBBLE:2,PIT:3,WATER:4,CAVE_IN:5,GAS:6,LAVA:7,
@@ -714,30 +721,33 @@ const ctx=canvas.getContext('2d');
 sizeCanvas();
 
 function camXY(){
-  const tw=Math.floor(VW/TS),th=Math.floor(VH/TS);
+  const ts=getTS();
+  if(zoomMode==='full'){
+    return{cx:0,cy:0,tw:MW,th:MH,ts};
+  }
+  const tw=Math.ceil(VW/ts),th=Math.ceil(VH/ts);
   return{
     cx:Math.max(0,Math.min(MW-tw,G.player.x-Math.floor(tw/2))),
     cy:Math.max(0,Math.min(MH-th,G.player.y-Math.floor(th/2))),
-    tw,th
+    tw,th,ts
   };
 }
 
 function render(){
   ctx.fillStyle='#000';ctx.fillRect(0,0,VW,VH);
-  const{cx,cy,tw,th}=camXY();
-  ctx.font=`${TS-3}px serif`;
+  const{cx,cy,tw,th,ts}=camXY();
+  const icoSize=Math.max(8,ts-4);
+  ctx.font=`${icoSize}px serif`;
   ctx.textAlign='center';ctx.textBaseline='middle';
 
   for(let ty=cy;ty<Math.min(MH,cy+th+1);ty++){
     for(let tx=cx;tx<Math.min(MW,cx+tw+1);tx++){
-      const sx=(tx-cx)*TS,sy=(ty-cy)*TS;
+      const sx=(tx-cx)*ts,sy=(ty-cy)*ts;
       if(!G.rev[ty][tx]){
-        // Darkness — subtle grid
-        ctx.fillStyle='#050508';ctx.fillRect(sx,sy,TS,TS);
-        ctx.strokeStyle='#0a0a0f';ctx.lineWidth=0.5;ctx.strokeRect(sx+0.5,sy+0.5,TS-1,TS-1);
-        // Torch mode: show adjacent-to-revealed hint
+        ctx.fillStyle='#050508';ctx.fillRect(sx,sy,ts,ts);
+        ctx.strokeStyle='#0a0a0f';ctx.lineWidth=0.5;ctx.strokeRect(sx+0.5,sy+0.5,ts-1,ts-1);
         if(G.mode==='torch'&&adj4(tx,ty).some(p=>G.rev[p.y][p.x])){
-          ctx.fillStyle='rgba(194,65,12,0.18)';ctx.fillRect(sx,sy,TS,TS);
+          ctx.fillStyle='rgba(194,65,12,0.18)';ctx.fillRect(sx,sy,ts,ts);
         }
         continue;
       }
@@ -746,21 +756,21 @@ function render(){
       const hl=G.torchSel.has(`${tx},${ty}`);
 
       ctx.fillStyle=hl?'#7c2d12':TILE_BG[tile]??'#14141f';
-      ctx.fillRect(sx,sy,TS,TS);
+      ctx.fillRect(sx,sy,ts,ts);
       ctx.strokeStyle=hl?'#ea580c':TILE_BD[tile]??'#1e1e2e';
-      ctx.lineWidth=0.5;ctx.strokeRect(sx+0.5,sy+0.5,TS-1,TS-1);
+      ctx.lineWidth=0.5;ctx.strokeRect(sx+0.5,sy+0.5,ts-1,ts-1);
 
-      const ico=TILE_ICO[tile];
-      if(ico){
-        ctx.globalAlpha=0.75;
-        ctx.fillStyle='#ffffff';
-        ctx.fillText(ico,sx+TS/2,sy+TS/2);
-        ctx.globalAlpha=1;
+      if(ts>=10){
+        const ico=TILE_ICO[tile];
+        if(ico){
+          ctx.globalAlpha=0.75;ctx.fillStyle='#ffffff';
+          ctx.fillText(ico,sx+ts/2,sy+ts/2);
+          ctx.globalAlpha=1;
+        }
       }
 
-      // Dynamite mode: highlight rubble
       if(G.mode==='dynamite'&&tile===T.RUBBLE){
-        ctx.fillStyle='rgba(255,255,0,0.2)';ctx.fillRect(sx,sy,TS,TS);
+        ctx.fillStyle='rgba(255,255,0,0.2)';ctx.fillRect(sx,sy,ts,ts);
       }
     }
   }
@@ -768,13 +778,15 @@ function render(){
   // Enemies
   G.enemies.forEach(e=>{
     if(!G.rev[e.y]?.[e.x])return;
-    const sx=(e.x-cx)*TS,sy=(e.y-cy)*TS;
-    if(sx<-TS||sx>VW||sy<-TS||sy>VH)return;
-    ctx.fillStyle='#7f1d1d';ctx.fillRect(sx+1,sy+1,TS-2,TS-2);
-    ctx.fillStyle='#fca5a5';
-    ctx.font=`bold ${TS-5}px monospace`;
-    ctx.textAlign='center';ctx.textBaseline='middle';
-    ctx.fillText(e.str,sx+TS/2,sy+TS/2);
+    const sx=(e.x-cx)*ts,sy=(e.y-cy)*ts;
+    if(sx<-ts||sx>VW||sy<-ts||sy>VH)return;
+    ctx.fillStyle='#7f1d1d';ctx.fillRect(sx+1,sy+1,ts-2,ts-2);
+    if(ts>=10){
+      ctx.fillStyle='#fca5a5';
+      ctx.font=`bold ${Math.max(7,ts-5)}px monospace`;
+      ctx.textAlign='center';ctx.textBaseline='middle';
+      ctx.fillText(e.str,sx+ts/2,sy+ts/2);
+    }
   });
 
   // Movement highlights
@@ -782,30 +794,32 @@ function render(){
     adj4(G.player.x,G.player.y).forEach(p=>{
       const tile=G.map[p.y][p.x];
       if([T.SOLID,T.RUBBLE].includes(tile))return;
-      const sx=(p.x-cx)*TS,sy=(p.y-cy)*TS;
-      ctx.fillStyle='rgba(251,191,36,0.2)';ctx.fillRect(sx,sy,TS,TS);
-      ctx.strokeStyle='#f59e0b';ctx.lineWidth=1;ctx.strokeRect(sx+0.5,sy+0.5,TS-1,TS-1);
+      const sx=(p.x-cx)*ts,sy=(p.y-cy)*ts;
+      ctx.fillStyle='rgba(251,191,36,0.2)';ctx.fillRect(sx,sy,ts,ts);
+      ctx.strokeStyle='#f59e0b';ctx.lineWidth=1;ctx.strokeRect(sx+0.5,sy+0.5,ts-1,ts-1);
     });
   }
 
   // Player
-  const px=(G.player.x-cx)*TS,py=(G.player.y-cy)*TS;
+  const px=(G.player.x-cx)*ts,py=(G.player.y-cy)*ts;
   ctx.fillStyle='#d97706';
-  ctx.beginPath();ctx.arc(px+TS/2,py+TS/2,TS/2-1,0,Math.PI*2);ctx.fill();
-  ctx.font=`${TS-3}px serif`;ctx.textAlign='center';ctx.textBaseline='middle';
-  ctx.fillText('♟',px+TS/2,py+TS/2);
+  ctx.beginPath();ctx.arc(px+ts/2,py+ts/2,Math.max(3,ts/2-1),0,Math.PI*2);ctx.fill();
+  if(ts>=14){
+    ctx.font=`${Math.max(8,ts-4)}px serif`;ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText('♟',px+ts/2,py+ts/2);
+  }
 
   // HUD overlays
   ctx.textAlign='left';ctx.textBaseline='alphabetic';
   if(G.shrineDir){
-    ctx.fillStyle='rgba(0,0,0,0.55)';ctx.fillRect(0,0,130,18);
+    ctx.fillStyle='rgba(0,0,0,0.65)';ctx.fillRect(0,0,140,20);
     ctx.fillStyle='#fbbf24';ctx.font='11px monospace';
-    ctx.fillText(`EXIT → ${G.shrineDir}`,4,13);
+    ctx.fillText(`EXIT → ${G.shrineDir}`,4,14);
   }
   if(G.mode==='moving'){
-    ctx.fillStyle='rgba(0,0,0,0.6)';ctx.fillRect(0,VH-20,VW,20);
+    ctx.fillStyle='rgba(0,0,0,0.7)';ctx.fillRect(0,VH-20,VW,20);
     ctx.fillStyle='#fbbf24';ctx.font='11px monospace';
-    ctx.fillText(`MOVEMENT: ${G.movement} steps remaining  |  Click adjacent tile to move`,4,VH-6);
+    ctx.fillText(`MOVE: ${G.movement} steps left  —  tap adjacent tile`,4,VH-5);
   }
 }
 
@@ -890,9 +904,9 @@ function clearBanner(){document.getElementById('mode-banner').classList.remove('
 function handleMapInput(clientX,clientY){
   const r=canvas.getBoundingClientRect();
   const scaleX=canvas.width/r.width,scaleY=canvas.height/r.height;
-  const{cx,cy}=camXY();
-  const tx=cx+Math.floor((clientX-r.left)*scaleX/TS);
-  const ty=cy+Math.floor((clientY-r.top)*scaleY/TS);
+  const{cx,cy,ts}=camXY();
+  const tx=cx+Math.floor((clientX-r.left)*scaleX/ts);
+  const ty=cy+Math.floor((clientY-r.top)*scaleY/ts);
   if(tx<0||tx>=MW||ty<0||ty>=MH)return;
   tryMove(tx,ty);
 }
@@ -904,6 +918,12 @@ canvas.addEventListener('touchend',e=>{
 },{passive:false});
 
 document.getElementById('btn-end').onclick=endTurn;
+document.getElementById('btn-zoom').onclick=()=>{
+  zoomMode=zoomMode==='close'?'full':'close';
+  document.getElementById('btn-zoom').textContent=
+    zoomMode==='close'?'🗺 Zoom Out (full map)':'🔍 Zoom In (10×10)';
+  render();
+};
 document.getElementById('btn-convert').onclick=openConvert;
 document.getElementById('btn-grove-rest').onclick=groveRest;
 document.getElementById('btn-cancel').onclick=()=>{
