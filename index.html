@@ -1,0 +1,888 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SHAFTED — Escape the Mine</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#060608;color:#e5e7eb;font-family:'Courier New',monospace;display:flex;height:100vh;overflow:hidden;user-select:none}
+#game-container{display:flex;width:100%;height:100%}
+#map-panel{flex:0 0 auto;position:relative;background:#000}
+#map{display:block;cursor:crosshair}
+#sidebar{display:flex;flex-direction:column;padding:10px 12px;background:#0f1117;border-left:2px solid #1f2937;overflow-y:auto;width:280px;min-width:280px;gap:6px}
+h1{font-size:20px;color:#f59e0b;letter-spacing:3px;text-shadow:0 0 10px #f59e0b88}
+.subtitle{font-size:9px;color:#6b7280;letter-spacing:2px;margin-top:2px}
+.sec{font-size:9px;color:#4b5563;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid #1f2937;padding-bottom:2px;margin-top:4px}
+#status-bar{display:flex;gap:10px;flex-wrap:wrap;font-size:10px;color:#6b7280}
+#status-bar span{color:#9ca3af}
+#mode-banner{padding:3px 8px;background:#1d4ed8;border-radius:2px;font-size:10px;color:#bfdbfe;display:none}
+#mode-banner.on{display:block}
+#dice-tray{display:flex;flex-direction:column;gap:5px}
+.res-row{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+.res-label{font-size:9px;color:#6b7280;width:62px;text-align:right;flex-shrink:0;text-transform:uppercase;letter-spacing:0.5px}
+.dice-group{display:flex;gap:3px;flex-wrap:wrap}
+.die{width:26px;height:26px;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:15px;cursor:pointer;border:2px solid rgba(255,255,255,0.15);font-weight:bold;transition:transform 0.1s,box-shadow 0.1s;position:relative}
+.die:hover{transform:scale(1.12);box-shadow:0 0 8px rgba(255,255,255,0.3)}
+.die.selected{border-color:#fff!important;box-shadow:0 0 10px #fff}
+.die.active{border-color:currentColor;animation:glow 0.9s ease-in-out infinite}
+@keyframes glow{0%,100%{box-shadow:0 0 4px 0px currentColor}50%{box-shadow:0 0 12px 4px currentColor}}
+#actions{display:flex;flex-direction:column;gap:4px}
+.btn{padding:6px 10px;border:1px solid #374151;background:#1a1f2e;color:#d1d5db;cursor:pointer;font-family:'Courier New',monospace;font-size:11px;border-radius:2px;transition:background 0.1s;text-align:left}
+.btn:hover:not(:disabled){background:#252d3e}
+.btn:disabled{opacity:0.35;cursor:not-allowed}
+.btn.p{background:#1e3a8a;border-color:#3b82f6;color:#bfdbfe}
+.btn.p:hover{background:#1d4ed8}
+.btn.d{background:#450a0a;border-color:#7f1d1d;color:#fca5a5}
+.btn.d:hover{background:#7f1d1d}
+#tile-info{font-size:10px;color:#6b7280;padding:5px 7px;background:#080a0f;border:1px solid #1f2937;border-radius:2px;min-height:40px;line-height:1.5}
+#tile-info strong{color:#9ca3af}
+#log{overflow-y:auto;font-size:10px;line-height:1.6;color:#4b5563;max-height:180px;border:1px solid #1a1a2e;padding:5px 6px;border-radius:2px;flex:1}
+.lg{color:#4b5563}.lg.w{color:#d97706}.lg.r{color:#dc2626}.lg.g{color:#16a34a}.lg.b{color:#3b82f6}
+#overlay{position:fixed;inset:0;background:rgba(0,0,0,0.88);display:flex;align-items:center;justify-content:center;z-index:100}
+#overlay.h{display:none}
+.modal{background:#111827;border:1px solid #374151;border-radius:6px;padding:22px;max-width:420px;width:92%}
+.modal h2{color:#f59e0b;margin-bottom:8px;font-size:16px}
+.modal p{font-size:12px;color:#9ca3af;margin-bottom:10px;line-height:1.6}
+#modal-dice{display:flex;flex-wrap:wrap;gap:5px;margin:10px 0}
+#modal-extra{font-size:11px;color:#6b7280;min-height:18px;margin-top:4px}
+#modal-btns{display:flex;gap:8px;justify-content:flex-end;margin-top:14px}
+#modal-btns .btn{font-size:12px;padding:7px 14px}
+</style>
+</head>
+<body>
+<div id="game-container">
+  <div id="map-panel"><canvas id="map"></canvas></div>
+  <div id="sidebar">
+    <h1>SHAFTED</h1>
+    <div class="subtitle">ESCAPE THE MINE</div>
+    <div class="sec">Status</div>
+    <div id="status-bar">
+      <span id="s-turn">Turn 0</span>
+      <span id="s-pos">⬡ (5,5)</span>
+      <span id="s-move">— not moving</span>
+    </div>
+    <div id="mode-banner"></div>
+    <div class="sec">Dice</div>
+    <div id="dice-tray"></div>
+    <div class="sec">Actions</div>
+    <div id="actions">
+      <button class="btn p" id="btn-end">End Turn ↵</button>
+      <button class="btn" id="btn-convert" disabled>Convert Picks (at tile)</button>
+      <button class="btn" id="btn-grove-rest" disabled>Grove: Rest &amp; Reroll Hearts</button>
+      <button class="btn d" id="btn-cancel" style="display:none">✕ Cancel Mode</button>
+    </div>
+    <div class="sec">Tile</div>
+    <div id="tile-info">Explore the mine to begin...</div>
+    <div class="sec">Log</div>
+    <div id="log"></div>
+  </div>
+</div>
+<div id="overlay" class="h">
+  <div class="modal">
+    <h2 id="modal-title"></h2>
+    <p id="modal-text"></p>
+    <div id="modal-dice"></div>
+    <div id="modal-extra"></div>
+    <div id="modal-btns"></div>
+  </div>
+</div>
+<script>
+// ── CONSTANTS ────────────────────────────────────────────────
+const MW=50,MH=50,TS=13,VW=520,VH=580;
+
+const T={EMPTY:0,SOLID:1,RUBBLE:2,PIT:3,WATER:4,CAVE_IN:5,GAS:6,LAVA:7,
+         MINING_CAMP:8,GROVE:9,IRON:10,COAL:11,BRIMSTONE:12,ENEMY_LAIR:13,SHRINE:14,EXIT:15};
+
+const TNAME={[T.EMPTY]:'Empty Mine',[T.SOLID]:'Solid Rock',[T.RUBBLE]:'Rubble',
+  [T.PIT]:'Pit',[T.WATER]:'Water',[T.CAVE_IN]:'Cave-In',[T.GAS]:'Gas Cloud',
+  [T.LAVA]:'Lava',[T.MINING_CAMP]:'Mining Camp',[T.GROVE]:'Grove',
+  [T.IRON]:'Iron Vein',[T.COAL]:'Coal Seam',[T.BRIMSTONE]:'Brimstone',
+  [T.ENEMY_LAIR]:'Enemy Lair',[T.SHRINE]:'Shrine of the Gods',[T.EXIT]:'EXIT!'};
+
+const TINFO={
+  [T.EMPTY]:'Safe passage.',
+  [T.SOLID]:'Impassable. Cannot be destroyed.',
+  [T.RUBBLE]:'Blocks path. Blast with dynamite. 10% chance of resource.',
+  [T.PIT]:'Falling in costs 1 heart dice. Vine auto-triggers if held.',
+  [T.WATER]:'Movement ends when exiting. Lose 1 heart if turn ends here.',
+  [T.CAVE_IN]:'Collapses to rubble when you leave!',
+  [T.GAS]:'Lose 1 heart to exit a different direction. Explodes if torched.',
+  [T.LAVA]:'Lose 1 heart on entry. Reveals 9 surrounding squares.',
+  [T.MINING_CAMP]:'Pick up 5 picks (+1 each if next to rubble or enemy, max +2).',
+  [T.GROVE]:'Convert picks to vines (1–3+). Rest action rerolls all hearts.',
+  [T.IRON]:'Convert 1–3 picks to weapons.',
+  [T.COAL]:'Convert 1–2 picks to torches.',
+  [T.BRIMSTONE]:'Convert 1–3 picks to dynamite. Explodes if torched!',
+  [T.ENEMY_LAIR]:'Enemy present. Defeat it to collect 5 picks.',
+  [T.SHRINE]:'Reveals 9 squares and points toward the exit.',
+  [T.EXIT]:'The way out! Step here to escape!'
+};
+
+const RC={
+  picks:   {bg:'#e5e7eb',tc:'#1f2937',bd:'#9ca3af',name:'Picks'},
+  hearts:  {bg:'#b91c1c',tc:'#fff',   bd:'#7f1d1d',name:'Hearts'},
+  torches: {bg:'#c2410c',tc:'#fff',   bd:'#9a3412',name:'Torches'},
+  dynamite:{bg:'#1f2937',tc:'#f3f4f6',bd:'#374151',name:'Dynamite'},
+  vines:   {bg:'#15803d',tc:'#fff',   bd:'#166534',name:'Vines'},
+  weapons: {bg:'#1d4ed8',tc:'#fff',   bd:'#1e3a8a',name:'Weapons'}
+};
+
+const DSYM=['','1','2','3','4','5','6'];
+
+const TILE_BG={
+  [T.EMPTY]:'#14141f',[T.SOLID]:'#050507',[T.RUBBLE]:'#3d2a1a',
+  [T.PIT]:'#03030a',[T.WATER]:'#0c2340',[T.CAVE_IN]:'#2d1f10',
+  [T.GAS]:'#0f1f0f',[T.LAVA]:'#5c0a0a',[T.MINING_CAMP]:'#2d1e00',
+  [T.GROVE]:'#0d3320',[T.IRON]:'#141c28',[T.COAL]:'#0a0a0d',
+  [T.BRIMSTONE]:'#2d1e00',[T.ENEMY_LAIR]:'#1a0000',[T.SHRINE]:'#1a1400',[T.EXIT]:'#023320'
+};
+const TILE_BD={
+  [T.EMPTY]:'#1e1e2e',[T.SOLID]:'#0a0a0f',[T.RUBBLE]:'#5c3e28',
+  [T.PIT]:'#0a0a18',[T.WATER]:'#1a4a7a',[T.CAVE_IN]:'#5a3a20',
+  [T.GAS]:'#1a3a1a',[T.LAVA]:'#a01010',[T.MINING_CAMP]:'#7a5a00',
+  [T.GROVE]:'#1a6040',[T.IRON]:'#3a5070',[T.COAL]:'#1a1a20',
+  [T.BRIMSTONE]:'#b07800',[T.ENEMY_LAIR]:'#600000',[T.SHRINE]:'#806000',[T.EXIT]:'#059669'
+};
+const TILE_ICO={
+  [T.RUBBLE]:'⛰',[T.PIT]:'▼',[T.WATER]:'〜',[T.CAVE_IN]:'⚠',
+  [T.GAS]:'☁',[T.LAVA]:'▲',[T.MINING_CAMP]:'⚒',[T.GROVE]:'♣',
+  [T.IRON]:'⚙',[T.COAL]:'◆',[T.BRIMSTONE]:'⚡',[T.ENEMY_LAIR]:'☠',
+  [T.SHRINE]:'★',[T.EXIT]:'✦'
+};
+
+// ── STATE ────────────────────────────────────────────────────
+let G={};
+
+function rollDice(n){return Array.from({length:n},()=>({v:1+Math.floor(Math.random()*6)}))}
+function roll1(){return {v:1+Math.floor(Math.random()*6)}}
+
+// ── MAP GENERATION ───────────────────────────────────────────
+function genMap(sx,sy){
+  const m=Array.from({length:MH},()=>new Array(MW).fill(T.EMPTY));
+  const r=Math.random;
+
+  // Border
+  for(let x=0;x<MW;x++){m[0][x]=T.SOLID;m[MH-1][x]=T.SOLID}
+  for(let y=0;y<MH;y++){m[y][0]=T.SOLID;m[y][MW-1]=T.SOLID}
+
+  // Rock clusters
+  for(let i=0;i<55;i++){
+    const cx=1+Math.floor(r()*(MW-2)),cy=1+Math.floor(r()*(MH-2));
+    const sz=1+Math.floor(r()*3);
+    for(let dy=-sz;dy<=sz;dy++)for(let dx=-sz;dx<=sz;dx++){
+      const nx=cx+dx,ny=cy+dy;
+      if(nx<1||nx>=MW-1||ny<1||ny>=MH-1)continue;
+      if(Math.abs(dx)+Math.abs(dy)>sz+1)continue;
+      if(r()<0.65&&Math.abs(nx-sx)+Math.abs(ny-sy)>5)m[ny][nx]=T.SOLID;
+    }
+  }
+
+  const place=(type,count,minD=3)=>{
+    let n=0,tries=0;
+    while(n<count&&tries<count*30){
+      tries++;
+      const x=1+Math.floor(r()*(MW-2)),y=1+Math.floor(r()*(MH-2));
+      if(m[y][x]!==T.EMPTY)continue;
+      if(Math.abs(x-sx)+Math.abs(y-sy)<minD)continue;
+      m[y][x]=type;n++;
+    }
+  };
+
+  place(T.RUBBLE,100,4);
+  place(T.PIT,70,5);
+  place(T.WATER,55,4);
+  place(T.CAVE_IN,35,5);
+  place(T.GAS,22,6);
+  place(T.LAVA,10,9);
+  place(T.MINING_CAMP,10,7);
+  place(T.ENEMY_LAIR,14,9);
+  place(T.IRON,18,5);
+  place(T.COAL,16,5);
+  place(T.BRIMSTONE,16,6);
+  place(T.GROVE,13,6);
+  place(T.SHRINE,5,12);
+
+  // Clear & set start 3×3
+  for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++)m[sy+dy][sx+dx]=T.EMPTY;
+  m[sy][sx+1]=T.IRON;
+  m[sy+1][sx]=T.MINING_CAMP;
+
+  return m;
+}
+
+// ── INIT ─────────────────────────────────────────────────────
+function initGame(){
+  const sx=5,sy=5;
+  G={
+    map:genMap(sx,sy),
+    rev:Array.from({length:MH},()=>new Array(MW).fill(false)),
+    player:{x:sx,y:sy,inWater:false,gasDir:null},
+    dice:{picks:rollDice(10),hearts:rollDice(3),torches:[],dynamite:[],vines:[],weapons:[]},
+    enemies:[],
+    mode:'normal',   // normal|moving|torch|dynamite|combat|convert
+    movement:0,
+    vineLeft:0,      // remaining vine-covered pit squares
+    torchLeft:0,     // squares left to reveal with current torch
+    torchSel:new Set(),
+    torchDieIdx:-1,
+    dynLeft:0,
+    dynDieIdx:-1,
+    combat:null,     // {enemy, selW:[], selH:[]}
+    convertRes:null, // {resource, maxN, selPicks:[]}
+    shrineDir:null,
+    exitPos:null,
+    turn:0,
+    log:[],
+    over:false,
+    won:false
+  };
+
+  // Place 2×2 exit in far corner
+  const ex=MW-6,ey=MH-6;
+  G.exitPos={x:ex,y:ey};
+  for(let dy=0;dy<2;dy++)for(let dx=0;dx<2;dx++)G.map[ey+dy][ex+dx]=T.EXIT;
+
+  // Spawn enemies at lairs
+  for(let y=0;y<MH;y++)for(let x=0;x<MW;x++)
+    if(G.map[y][x]===T.ENEMY_LAIR)
+      G.enemies.push({x,y,str:1+Math.floor(Math.random()*5)});
+
+  // Reveal 3×3 start
+  revealAt(sx,sy,1);
+
+  log('You are trapped deep in the mine. Find the exit!','w');
+  log('10 picks, 3 hearts. Click a heart die to move.','b');
+
+  redrawUI();
+  render();
+}
+
+// ── FOG ──────────────────────────────────────────────────────
+function revealAt(cx,cy,r=1){
+  for(let dy=-r;dy<=r;dy++)for(let dx=-r;dx<=r;dx++){
+    const nx=cx+dx,ny=cy+dy;
+    if(nx>=0&&nx<MW&&ny>=0&&ny<MH)G.rev[ny][nx]=true;
+  }
+}
+
+// ── HELPERS ──────────────────────────────────────────────────
+function adj4(x,y){return[[0,1],[0,-1],[1,0],[-1,0]].map(([dx,dy])=>({x:x+dx,y:y+dy,dx,dy})).filter(p=>p.x>=0&&p.x<MW&&p.y>=0&&p.y<MH)}
+function enemyAt(x,y){return G.enemies.find(e=>e.x===x&&e.y===y)||null}
+function adjHas(x,y,types){return adj4(x,y).some(p=>types.includes(G.map[p.y][p.x]))}
+function adjEnemyCount(x,y){return adj4(x,y).filter(p=>enemyAt(p.x,p.y)).length}
+function adjWaterCount(x,y){return adj4(x,y).filter(p=>G.map[p.y][p.x]===T.WATER).length}
+
+// ── COMBAT ───────────────────────────────────────────────────
+function openCombat(enemy){
+  G.mode='combat';
+  G.combat={enemy,selW:[],selH:[]};
+  showCombatModal();
+}
+
+function showCombatModal(){
+  const e=G.combat.enemy;
+  openModal(`Enemy! Strength ${e.str}`,
+    `A creature of strength ${e.str} blocks your path. Discard dice whose values sum to ≥ ${e.str}. Use weapons (preferred) or hearts.`);
+  renderCombatDice();
+  setModalBtns([
+    {label:'Flee',fn:()=>{closeModal();G.mode='moving';redrawUI();render();}},
+    {label:'Fight!',cls:'p',fn:resolveCombat}
+  ]);
+}
+
+function renderCombatDice(){
+  const c=document.getElementById('modal-dice');
+  c.innerHTML='';
+  G.combat.selW=[];G.combat.selH=[];
+
+  const addGroup=(res,arr,selArr)=>{
+    if(!arr.length)return;
+    const lbl=document.createElement('div');
+    lbl.style.cssText='width:100%;font-size:10px;margin-top:6px;color:#6b7280';
+    lbl.textContent=RC[res].name+':';
+    c.appendChild(lbl);
+    arr.forEach((d,i)=>{
+      const el=makeDie(res,d.v);
+      el.onclick=()=>{
+        const idx=selArr.indexOf(i);
+        if(idx===-1){selArr.push(i);el.classList.add('selected')}
+        else{selArr.splice(idx,1);el.classList.remove('selected')}
+        const tot=combatTotal();
+        document.getElementById('modal-extra').textContent=`Selected: ${tot} / Need: ${G.combat.enemy.str}`;
+      };
+      c.appendChild(el);
+    });
+  };
+  addGroup('weapons',G.dice.weapons,G.combat.selW);
+  addGroup('hearts',G.dice.hearts,G.combat.selH);
+  document.getElementById('modal-extra').textContent=`Selected: 0 / Need: ${G.combat.enemy.str}`;
+}
+
+function combatTotal(){
+  const wt=G.combat.selW.reduce((s,i)=>s+G.dice.weapons[i].v,0);
+  const ht=G.combat.selH.reduce((s,i)=>s+G.dice.hearts[i].v,0);
+  return wt+ht;
+}
+
+function resolveCombat(){
+  const tot=combatTotal();
+  const e=G.combat.enemy;
+  if(tot<e.str){log(`Need ${e.str}, selected ${tot}. Not enough!`,'w');return}
+  [...G.combat.selW].sort((a,b)=>b-a).forEach(i=>G.dice.weapons.splice(i,1));
+  [...G.combat.selH].sort((a,b)=>b-a).forEach(i=>G.dice.hearts.splice(i,1));
+  G.enemies=G.enemies.filter(en=>en!==e);
+  log(`Enemy defeated (str ${e.str})!`,'g');
+  if(G.map[e.y][e.x]===T.ENEMY_LAIR){
+    const p=rollDice(5);G.dice.picks.push(...p);
+    log('Collected 5 picks from the lair.','g');
+  }
+  closeModal();
+  G.combat=null;
+  G.mode='moving';
+  checkDeath();
+  redrawUI();render();
+}
+
+// ── TORCH ────────────────────────────────────────────────────
+function activateTorch(idx){
+  if(G.mode==='torch'||G.mode==='dynamite'||G.mode==='combat')return;
+  const d=G.dice.torches[idx];
+  G.torchDieIdx=idx;
+  G.torchLeft=d.v;
+  G.torchSel=new Set();
+  G.mode='torch';
+  document.getElementById('btn-cancel').style.display='block';
+  setBanner(`TORCH — click ${G.torchLeft} unrevealed squares to reveal (adj to lit area)`);
+  redrawUI();render();
+}
+
+function torchClick(x,y){
+  const key=`${x},${y}`;
+  // Must be adjacent to revealed area
+  const adjRev=adj4(x,y).some(p=>G.rev[p.y][p.x]);
+  if(!adjRev&&!G.rev[y][x]){log('Select squares adjacent to lit area.','w');return}
+
+  const tile=G.map[y][x];
+  // Special explosions
+  if(tile===T.BRIMSTONE){
+    revealAt(x,y,1);G.map[y][x]=T.EMPTY;
+    G.torchLeft--;log('Torch hit BRIMSTONE — explosion! 9 squares revealed.','w');
+    if(G.torchLeft<=0)commitTorch();else setBanner(`TORCH — ${G.torchLeft} left`);
+    render();return;
+  }
+  if(tile===T.GAS){
+    revealAt(x,y,1);
+    // Kill enemies and destroy tiles in 3×3
+    for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
+      const nx=x+dx,ny=y+dy;
+      if(nx<0||nx>=MW||ny<0||ny>=MH)continue;
+      G.enemies=G.enemies.filter(e=>e.x!==nx||e.y!==ny);
+      if([T.RUBBLE,T.BRIMSTONE,T.COAL,T.IRON,T.GROVE].includes(G.map[ny][nx]))G.map[ny][nx]=T.EMPTY;
+      if(G.map[ny][nx]===T.SOLID)G.map[ny][nx]=T.RUBBLE;
+    }
+    G.map[y][x]=T.EMPTY;
+    if(Math.abs(G.player.x-x)<=1&&Math.abs(G.player.y-y)<=1){loseHeart('Gas explosion caught you!')}
+    G.torchLeft--;log('Torch hit GAS CLOUD — massive explosion!','w');
+    if(G.torchLeft<=0)commitTorch();else setBanner(`TORCH — ${G.torchLeft} left`);
+    render();return;
+  }
+
+  if(G.torchSel.has(key)){G.torchSel.delete(key);G.torchLeft++;}
+  else{G.torchSel.add(key);G.torchLeft--;}
+
+  if(G.torchLeft<=0){commitTorch();return}
+  setBanner(`TORCH — ${G.torchLeft} left`);
+  render();
+}
+
+function commitTorch(){
+  G.torchSel.forEach(k=>{const[x,y]=k.split(',').map(Number);G.rev[y][x]=true});
+  G.dice.torches.splice(G.torchDieIdx,1);
+  G.torchSel=new Set();G.torchLeft=0;
+  G.mode=G.movement>0?'moving':'normal';
+  document.getElementById('btn-cancel').style.display='none';
+  clearBanner();log('Torch used.','b');
+  redrawUI();render();
+}
+
+// ── DYNAMITE ─────────────────────────────────────────────────
+function activateDynamite(idx){
+  if(G.mode==='torch'||G.mode==='dynamite'||G.mode==='combat')return;
+  const d=G.dice.dynamite[idx];
+  G.dynDieIdx=idx;G.dynLeft=d.v;
+  G.mode='dynamite';
+  document.getElementById('btn-cancel').style.display='block';
+  setBanner(`DYNAMITE — click ${G.dynLeft} rubble squares to destroy`);
+  redrawUI();render();
+}
+
+function dynamiteClick(x,y){
+  if(G.map[y][x]!==T.RUBBLE){log('Can only target rubble.','w');return}
+  const rng=Math.random();
+  if(rng<0.033)G.map[y][x]=T.IRON;
+  else if(rng<0.066)G.map[y][x]=T.BRIMSTONE;
+  else if(rng<0.1)G.map[y][x]=T.COAL;
+  else G.map[y][x]=T.EMPTY;
+  G.rev[y][x]=true;
+  G.dynLeft--;
+  log(`Rubble blasted! (${G.dynLeft} left)`);
+  if(G.dynLeft<=0){
+    G.dice.dynamite.splice(G.dynDieIdx,1);
+    G.mode=G.movement>0?'moving':'normal';
+    document.getElementById('btn-cancel').style.display='none';
+    clearBanner();log('Dynamite used.','b');
+  }else{setBanner(`DYNAMITE — ${G.dynLeft} left`);}
+  redrawUI();render();
+}
+
+// ── CONVERSION ───────────────────────────────────────────────
+function openConvert(){
+  const x=G.player.x,y=G.player.y,tile=G.map[y][x];
+  let res,maxN,hint='';
+  if(tile===T.COAL){res='torches';maxN=2;}
+  else if(tile===T.IRON){res='weapons';maxN=3;}
+  else if(tile===T.BRIMSTONE){
+    res='dynamite';
+    maxN=3+Math.min(2,adjHas(x,y,[T.RUBBLE])?1:0)+(adjEnemyCount(x,y)>0?1:0);
+    hint=` (bonus adj: max ${maxN})`;
+  }
+  else if(tile===T.GROVE){
+    res='vines';
+    maxN=3+adjWaterCount(x,y);
+    hint=` (water adj bonus: max ${maxN})`;
+  }
+  else return;
+
+  if(!G.dice.picks.length){log('No picks to convert!','w');return}
+
+  G.convertRes={resource:res,maxN,selPicks:[]};
+  openModal(`Convert at ${TNAME[tile]}`,
+    `Select picks to convert into ${RC[res].name}${hint} (max ${maxN}). Each becomes a ${RC[res].name} die with the same value.`);
+
+  const c=document.getElementById('modal-dice');
+  c.innerHTML='';
+  const lbl=document.createElement('div');
+  lbl.style.cssText='width:100%;font-size:10px;color:#6b7280;margin-bottom:4px';
+  lbl.textContent='Pick dice to convert:';
+  c.appendChild(lbl);
+  G.dice.picks.forEach((d,i)=>{
+    const el=makeDie('picks',d.v);
+    el.onclick=()=>{
+      const idx=G.convertRes.selPicks.indexOf(i);
+      if(idx===-1){
+        if(G.convertRes.selPicks.length>=maxN){log('Max selection reached.','w');return}
+        G.convertRes.selPicks.push(i);el.classList.add('selected');
+      }else{G.convertRes.selPicks.splice(idx,1);el.classList.remove('selected')}
+      document.getElementById('modal-extra').textContent=`Selected: ${G.convertRes.selPicks.length} / Max: ${maxN}`;
+    };
+    c.appendChild(el);
+  });
+  document.getElementById('modal-extra').textContent=`Selected: 0 / Max: ${maxN}`;
+  setModalBtns([
+    {label:'Cancel',fn:closeModal},
+    {label:'Convert',cls:'p',fn:doConvert}
+  ]);
+}
+
+function doConvert(){
+  const{resource,selPicks}=G.convertRes;
+  if(!selPicks.length){log('Select at least one pick.','w');return}
+  const idxs=[...selPicks].sort((a,b)=>b-a);
+  const newDice=idxs.map(i=>({v:G.dice.picks[i].v}));
+  idxs.forEach(i=>G.dice.picks.splice(i,1));
+  G.dice[resource].push(...newDice);
+  log(`Converted ${newDice.length} pick(s) → ${RC[resource].name}.`,'g');
+  closeModal();G.convertRes=null;
+  redrawUI();render();
+}
+
+function groveRest(){
+  if(G.map[G.player.y][G.player.x]!==T.GROVE)return;
+  G.dice.hearts.forEach(d=>{d.v=1+Math.floor(Math.random()*6)});
+  log('Grove rest: all heart dice rerolled.','g');
+  redrawUI();render();
+}
+
+// ── MOVEMENT ─────────────────────────────────────────────────
+function activateHeart(idx){
+  if(G.over||G.won)return;
+  if(['torch','dynamite','combat'].includes(G.mode))return;
+  const d=G.dice.hearts[idx];
+  G.dice.hearts.splice(idx,1);
+  G.movement+=d.v;
+  G.mode='moving';
+  log(`Heart used (${d.v} steps). Total available: ${G.movement}.`,'b');
+  redrawUI();render();
+}
+
+function tryMove(tx,ty){
+  if(G.over||G.won)return;
+  if(G.mode==='torch'){torchClick(tx,ty);return}
+  if(G.mode==='dynamite'){dynamiteClick(tx,ty);return}
+  if(G.mode==='combat')return;
+  if(G.mode==='normal'){log('Click a heart die to move, or use an item.','w');return}
+  if(G.movement<=0){log('No movement left. Use another heart or end turn.','w');return}
+
+  const dx=tx-G.player.x,dy=ty-G.player.y;
+  if(Math.abs(dx)+Math.abs(dy)!==1)return;
+
+  const tile=G.map[ty][tx];
+  if(tile===T.SOLID){log('Solid rock — impassable.');return}
+  if(tile===T.RUBBLE){log('Rubble blocks the path. Blast it with dynamite.');return}
+
+  const foe=enemyAt(tx,ty);
+  if(foe){openCombat(foe);return}
+
+  // Leave current tile effects
+  const curTile=G.map[G.player.y][G.player.x];
+  if(curTile===T.CAVE_IN){G.map[G.player.y][G.player.x]=T.RUBBLE;log('The cave caved in behind you!','w')}
+  if(curTile===T.GAS&&G.player.gasDir){
+    if(dx!==G.player.gasDir.dx||dy!==G.player.gasDir.dy){
+      loseHeart('Exiting gas the wrong way!');
+    }
+    G.player.gasDir=null;
+  }
+
+  // Water exit — movement ends after this step
+  if(G.player.inWater){G.player.inWater=false;G.movement=Math.min(G.movement,1)}
+
+  G.movement--;
+  G.player.x=tx;G.player.y=ty;
+  revealAt(tx,ty,1);
+
+  // Entry effects
+  entryEffect(tx,ty,dx,dy);
+
+  document.getElementById('s-move').textContent=`Move: ${G.movement} left`;
+  if(G.movement<=0){
+    G.mode='normal';
+    document.getElementById('s-move').textContent='— not moving';
+    applyWaterEndOfMovement();
+  }
+  redrawUI();render();
+}
+
+function entryEffect(x,y,dx,dy){
+  const tile=G.map[y][x];
+  switch(tile){
+    case T.PIT:
+      if(G.vineLeft>0){G.vineLeft--;log(`Vine carries you over pit. (${G.vineLeft} left).`,'g')}
+      else if(G.dice.vines.length>0){
+        const v=G.dice.vines.shift();G.vineLeft=v.v-1;
+        log(`Vine auto-triggered! (value ${v.v}, ${G.vineLeft} more pit squares covered).`,'g');
+      }else{loseHeart('Fell into a pit!');G.movement=0}
+      break;
+    case T.WATER:
+      G.player.inWater=true;
+      log('Wading through water. Movement ends on exit.');
+      break;
+    case T.LAVA:
+      revealAt(x,y,1);
+      loseHeart('Lava burns you!');G.movement=0;
+      break;
+    case T.GAS:
+      G.player.gasDir={dx,dy};
+      log('Gas cloud! Exit the same direction or lose a heart.','w');
+      break;
+    case T.MINING_CAMP:{
+      const bonus=Math.min(2,+(adjHas(x,y,[T.RUBBLE]))+(adjEnemyCount(x,y)>0?1:0));
+      const n=5+bonus;const p=rollDice(n);G.dice.picks.push(...p);
+      log(`Mining camp! +${n} picks${bonus?' (bonuses applied)':''}.`,'g');
+      break;
+    }
+    case T.SHRINE:
+      revealAt(x,y,1);
+      const ddx=G.exitPos.x-x,ddy=G.exitPos.y-y;
+      const dirs=ddx===0?(ddy<0?'North':'South'):(ddx<0?'West':'East');
+      const diag=ddx!==0&&ddy!==0;
+      const dstr=diag?(ddy<0?(ddx<0?'North-West':'North-East'):(ddx<0?'South-West':'South-East')):dirs;
+      G.shrineDir=dstr;
+      log(`Shrine! 9 squares revealed. Exit is to the ${dstr}!`,'g');
+      break;
+    case T.EXIT:
+      G.won=true;
+      log('YOU ESCAPED THE MINE! VICTORY!','g');
+      setTimeout(()=>openModal('ESCAPED!','The gnome scrambles into daylight. You are FREE!',[
+        {label:'Play Again',cls:'p',fn:()=>{closeModal();initGame()}}
+      ]),400);
+      break;
+    case T.ENEMY_LAIR:
+      if(!enemyAt(x,y)){G.dice.picks.push(...rollDice(5));log('Lair cleared! +5 picks.','g')}
+      break;
+  }
+}
+
+function applyWaterEndOfMovement(){
+  if(G.player.inWater)loseHeart('Resting in water costs a heart.');
+}
+
+// ── HEALTH ───────────────────────────────────────────────────
+function loseHeart(msg){
+  if(G.dice.hearts.length>0){
+    const h=G.dice.hearts.shift();
+    log(`${msg} Lost heart (${h.v}).`,'r');
+    checkDeath();
+  }else{log(msg+' No hearts left!','r');triggerDeath()}
+}
+
+function checkDeath(){if(!G.won&&G.dice.hearts.length===0)triggerDeath()}
+function triggerDeath(){
+  G.over=true;
+  log('No hearts remain. GAME OVER.','r');
+  setTimeout(()=>openModal('GAME OVER','The gnome perishes in the dark...',[
+    {label:'Try Again',cls:'p',fn:()=>{closeModal();initGame()}}
+  ]),400);
+}
+
+// ── ENEMY AI ─────────────────────────────────────────────────
+function enemyTurn(){
+  G.enemies.forEach(e=>{
+    const BLOCKS=[T.SOLID,T.RUBBLE,T.PIT,T.LAVA,T.GAS];
+    let best=null,bestD=Math.abs(e.x-G.player.x)+Math.abs(e.y-G.player.y);
+    adj4(e.x,e.y).forEach(p=>{
+      if(!G.rev[p.y][p.x])return;
+      if(BLOCKS.includes(G.map[p.y][p.x]))return;
+      if(G.enemies.some(other=>other!==e&&other.x===p.x&&other.y===p.y))return;
+      const d=Math.abs(p.x-G.player.x)+Math.abs(p.y-G.player.y);
+      if(d<bestD){bestD=d;best=p}
+    });
+    if(best){e.x=best.x;e.y=best.y}
+    // Reached player?
+    if(e.x===G.player.x&&e.y===G.player.y)forceAttack(e);
+  });
+}
+
+function forceAttack(e){
+  log(`Enemy (str ${e.str}) caught you!`,'r');
+  let remaining=e.str;
+  while(remaining>0&&G.dice.weapons.length>0){
+    const w=G.dice.weapons.pop();remaining-=w.v;
+  }
+  while(remaining>0&&G.dice.hearts.length>0){
+    const h=G.dice.hearts.pop();remaining-=h.v;
+  }
+  if(remaining>0){log('Overwhelmed!','r');triggerDeath()}
+  else{G.enemies=G.enemies.filter(en=>en!==e);log('Enemy destroyed by contact!','g')}
+}
+
+// ── TURN ─────────────────────────────────────────────────────
+function endTurn(){
+  if(G.over||G.won)return;
+  // Final water check if still in water at turn end
+  if(G.player.inWater)loseHeart('Turn ends in water.');
+  G.mode='normal';G.movement=0;G.vineLeft=0;
+  G.turn++;
+  document.getElementById('s-turn').textContent=`Turn ${G.turn}`;
+  document.getElementById('s-move').textContent='— not moving';
+  enemyTurn();
+  checkDeath();
+  redrawUI();render();
+}
+
+// ── RENDER ───────────────────────────────────────────────────
+const canvas=document.getElementById('map');
+const ctx=canvas.getContext('2d');
+canvas.width=VW;canvas.height=VH;
+
+function camXY(){
+  const tw=Math.floor(VW/TS),th=Math.floor(VH/TS);
+  return{
+    cx:Math.max(0,Math.min(MW-tw,G.player.x-Math.floor(tw/2))),
+    cy:Math.max(0,Math.min(MH-th,G.player.y-Math.floor(th/2))),
+    tw,th
+  };
+}
+
+function render(){
+  ctx.fillStyle='#000';ctx.fillRect(0,0,VW,VH);
+  const{cx,cy,tw,th}=camXY();
+  ctx.font=`${TS-3}px serif`;
+  ctx.textAlign='center';ctx.textBaseline='middle';
+
+  for(let ty=cy;ty<Math.min(MH,cy+th+1);ty++){
+    for(let tx=cx;tx<Math.min(MW,cx+tw+1);tx++){
+      const sx=(tx-cx)*TS,sy=(ty-cy)*TS;
+      if(!G.rev[ty][tx]){
+        // Darkness — subtle grid
+        ctx.fillStyle='#050508';ctx.fillRect(sx,sy,TS,TS);
+        ctx.strokeStyle='#0a0a0f';ctx.lineWidth=0.5;ctx.strokeRect(sx+0.5,sy+0.5,TS-1,TS-1);
+        // Torch mode: show adjacent-to-revealed hint
+        if(G.mode==='torch'&&adj4(tx,ty).some(p=>G.rev[p.y][p.x])){
+          ctx.fillStyle='rgba(194,65,12,0.18)';ctx.fillRect(sx,sy,TS,TS);
+        }
+        continue;
+      }
+
+      const tile=G.map[ty][tx];
+      const hl=G.torchSel.has(`${tx},${ty}`);
+
+      ctx.fillStyle=hl?'#7c2d12':TILE_BG[tile]??'#14141f';
+      ctx.fillRect(sx,sy,TS,TS);
+      ctx.strokeStyle=hl?'#ea580c':TILE_BD[tile]??'#1e1e2e';
+      ctx.lineWidth=0.5;ctx.strokeRect(sx+0.5,sy+0.5,TS-1,TS-1);
+
+      const ico=TILE_ICO[tile];
+      if(ico){
+        ctx.globalAlpha=0.75;
+        ctx.fillStyle='#ffffff';
+        ctx.fillText(ico,sx+TS/2,sy+TS/2);
+        ctx.globalAlpha=1;
+      }
+
+      // Dynamite mode: highlight rubble
+      if(G.mode==='dynamite'&&tile===T.RUBBLE){
+        ctx.fillStyle='rgba(255,255,0,0.2)';ctx.fillRect(sx,sy,TS,TS);
+      }
+    }
+  }
+
+  // Enemies
+  G.enemies.forEach(e=>{
+    if(!G.rev[e.y]?.[e.x])return;
+    const sx=(e.x-cx)*TS,sy=(e.y-cy)*TS;
+    if(sx<-TS||sx>VW||sy<-TS||sy>VH)return;
+    ctx.fillStyle='#7f1d1d';ctx.fillRect(sx+1,sy+1,TS-2,TS-2);
+    ctx.fillStyle='#fca5a5';
+    ctx.font=`bold ${TS-5}px monospace`;
+    ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText(e.str,sx+TS/2,sy+TS/2);
+  });
+
+  // Movement highlights
+  if(G.mode==='moving'&&G.movement>0){
+    adj4(G.player.x,G.player.y).forEach(p=>{
+      const tile=G.map[p.y][p.x];
+      if([T.SOLID,T.RUBBLE].includes(tile))return;
+      const sx=(p.x-cx)*TS,sy=(p.y-cy)*TS;
+      ctx.fillStyle='rgba(251,191,36,0.2)';ctx.fillRect(sx,sy,TS,TS);
+      ctx.strokeStyle='#f59e0b';ctx.lineWidth=1;ctx.strokeRect(sx+0.5,sy+0.5,TS-1,TS-1);
+    });
+  }
+
+  // Player
+  const px=(G.player.x-cx)*TS,py=(G.player.y-cy)*TS;
+  ctx.fillStyle='#d97706';
+  ctx.beginPath();ctx.arc(px+TS/2,py+TS/2,TS/2-1,0,Math.PI*2);ctx.fill();
+  ctx.font=`${TS-3}px serif`;ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.fillText('♟',px+TS/2,py+TS/2);
+
+  // HUD overlays
+  ctx.textAlign='left';ctx.textBaseline='alphabetic';
+  if(G.shrineDir){
+    ctx.fillStyle='rgba(0,0,0,0.55)';ctx.fillRect(0,0,130,18);
+    ctx.fillStyle='#fbbf24';ctx.font='11px monospace';
+    ctx.fillText(`EXIT → ${G.shrineDir}`,4,13);
+  }
+  if(G.mode==='moving'){
+    ctx.fillStyle='rgba(0,0,0,0.6)';ctx.fillRect(0,VH-20,VW,20);
+    ctx.fillStyle='#fbbf24';ctx.font='11px monospace';
+    ctx.fillText(`MOVEMENT: ${G.movement} steps remaining  |  Click adjacent tile to move`,4,VH-6);
+  }
+}
+
+// ── UI ───────────────────────────────────────────────────────
+function makeDie(res,v){
+  const c=RC[res];
+  const el=document.createElement('div');
+  el.className='die';
+  el.style.background=c.bg;el.style.color=c.tc;el.style.borderColor=c.bd;
+  el.style.setProperty('color',c.tc);
+  el.textContent=DSYM[v]||v;
+  el.title=`${c.name}: ${v}`;
+  return el;
+}
+
+function redrawUI(){
+  // Dice tray
+  const tray=document.getElementById('dice-tray');
+  tray.innerHTML='';
+  Object.entries(G.dice).forEach(([res,arr])=>{
+    if(!arr.length)return;
+    const row=document.createElement('div');row.className='res-row';
+    const lbl=document.createElement('div');lbl.className='res-label';lbl.textContent=RC[res].name+':';
+    row.appendChild(lbl);
+    const grp=document.createElement('div');grp.className='dice-group';
+    arr.forEach((d,i)=>{
+      const el=makeDie(res,d.v);
+      if(res==='hearts'){el.onclick=()=>activateHeart(i)}
+      else if(res==='torches'){el.onclick=()=>activateTorch(i)}
+      else if(res==='dynamite'){el.onclick=()=>activateDynamite(i)}
+      grp.appendChild(el);
+    });
+    row.appendChild(grp);tray.appendChild(row);
+  });
+
+  // Status
+  document.getElementById('s-pos').textContent=`⬡ (${G.player.x},${G.player.y})`;
+
+  // Tile info
+  const{x,y}=G.player;
+  if(G.rev[y]?.[x]){
+    const tile=G.map[y][x];
+    document.getElementById('tile-info').innerHTML=`<strong>${TNAME[tile]}</strong><br>${TINFO[tile]||''}`;
+  }
+
+  // Convert button
+  const convertTiles=[T.COAL,T.IRON,T.BRIMSTONE,T.GROVE];
+  document.getElementById('btn-convert').disabled=!convertTiles.includes(G.map[y]?.[x])||!G.dice.picks.length;
+  document.getElementById('btn-grove-rest').disabled=G.map[y]?.[x]!==T.GROVE||!G.dice.hearts.length;
+}
+
+// ── LOG ──────────────────────────────────────────────────────
+function log(msg,cls=''){
+  G.log.unshift({msg,cls});if(G.log.length>60)G.log.pop();
+  const el=document.getElementById('log');
+  el.innerHTML=G.log.map(e=>`<div class="lg ${e.cls}">${e.msg}</div>`).join('');
+}
+
+// ── MODAL ────────────────────────────────────────────────────
+function openModal(title,text,btns){
+  document.getElementById('modal-title').textContent=title;
+  document.getElementById('modal-text').textContent=text;
+  document.getElementById('modal-dice').innerHTML='';
+  document.getElementById('modal-extra').textContent='';
+  setModalBtns(btns||[]);
+  document.getElementById('overlay').classList.remove('h');
+}
+function setModalBtns(btns){
+  const c=document.getElementById('modal-btns');c.innerHTML='';
+  btns.forEach(b=>{
+    const el=document.createElement('button');
+    el.className='btn '+(b.cls||'');el.textContent=b.label;el.onclick=b.fn;c.appendChild(el);
+  });
+}
+function closeModal(){document.getElementById('overlay').classList.add('h');G.mode=G.movement>0?'moving':'normal'}
+
+// ── BANNER ───────────────────────────────────────────────────
+function setBanner(t){const b=document.getElementById('mode-banner');b.textContent=t;b.classList.add('on')}
+function clearBanner(){document.getElementById('mode-banner').classList.remove('on')}
+
+// ── EVENTS ───────────────────────────────────────────────────
+canvas.addEventListener('click',e=>{
+  const r=canvas.getBoundingClientRect();
+  const{cx,cy}=camXY();
+  const tx=cx+Math.floor((e.clientX-r.left)/TS);
+  const ty=cy+Math.floor((e.clientY-r.top)/TS);
+  if(tx<0||tx>=MW||ty<0||ty>=MH)return;
+  tryMove(tx,ty);
+});
+
+document.getElementById('btn-end').onclick=endTurn;
+document.getElementById('btn-convert').onclick=openConvert;
+document.getElementById('btn-grove-rest').onclick=groveRest;
+document.getElementById('btn-cancel').onclick=()=>{
+  G.mode=G.movement>0?'moving':'normal';
+  G.torchSel=new Set();G.torchLeft=0;G.dynLeft=0;
+  document.getElementById('btn-cancel').style.display='none';
+  clearBanner();redrawUI();render();
+};
+
+document.addEventListener('keydown',e=>{
+  if(e.key==='Enter'||e.key===' '){endTurn();e.preventDefault()}
+});
+
+// ── START ────────────────────────────────────────────────────
+initGame();
+</script>
+</body>
+</html>
