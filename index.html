@@ -2,14 +2,30 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>SHAFTED — Escape the Mine</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{background:#060608;color:#e5e7eb;font-family:'Courier New',monospace;display:flex;height:100vh;overflow:hidden;user-select:none}
 #game-container{display:flex;width:100%;height:100%}
 #map-panel{flex:0 0 auto;position:relative;background:#000}
-#map{display:block;cursor:crosshair}
+#map{display:block;cursor:crosshair;touch-action:none}
 #sidebar{display:flex;flex-direction:column;padding:10px 12px;background:#0f1117;border-left:2px solid #1f2937;overflow-y:auto;width:280px;min-width:280px;gap:6px}
+@media(max-width:720px){
+  #game-container{flex-direction:column}
+  #map-panel{flex:0 0 auto;width:100%}
+  #sidebar{width:100%!important;min-width:unset!important;border-left:none;border-top:2px solid #1f2937;flex:1;overflow-y:auto;padding:8px 10px;gap:4px}
+  h1{font-size:16px;letter-spacing:2px}
+  .subtitle{display:none}
+  .sec{margin-top:2px}
+  .die{width:30px;height:30px;font-size:14px}
+  #log{max-height:80px}
+  #tile-info{min-height:28px;font-size:9px}
+  .btn{padding:5px 8px;font-size:10px}
+  #status-bar{font-size:9px}
+  #mode-banner{font-size:9px}
+  .res-label{width:52px;font-size:8px}
+}
 h1{font-size:20px;color:#f59e0b;letter-spacing:3px;text-shadow:0 0 10px #f59e0b88}
 .subtitle{font-size:9px;color:#6b7280;letter-spacing:2px;margin-top:2px}
 .sec{font-size:9px;color:#4b5563;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid #1f2937;padding-bottom:2px;margin-top:4px}
@@ -88,7 +104,19 @@ h1{font-size:20px;color:#f59e0b;letter-spacing:3px;text-shadow:0 0 10px #f59e0b8
 </div>
 <script>
 // ── CONSTANTS ────────────────────────────────────────────────
-const MW=50,MH=50,TS=13,VW=520,VH=580;
+const MW=50,MH=50;
+let TS=13,VW=520,VH=580;
+function sizeCanvas(){
+  const mobile=window.innerWidth<=720;
+  if(mobile){
+    VW=window.innerWidth;
+    VH=Math.round(window.innerHeight*0.52);
+    TS=Math.max(8,Math.floor(VW/44));
+  }else{VW=520;VH=580;TS=13;}
+  canvas.width=VW;canvas.height=VH;
+  if(G.map)render();
+}
+window.addEventListener('resize',sizeCanvas);
 
 const T={EMPTY:0,SOLID:1,RUBBLE:2,PIT:3,WATER:4,CAVE_IN:5,GAS:6,LAVA:7,
          MINING_CAMP:8,GROVE:9,IRON:10,COAL:11,BRIMSTONE:12,ENEMY_LAIR:13,SHRINE:14,EXIT:15};
@@ -212,6 +240,7 @@ function genMap(sx,sy){
 
 // ── INIT ─────────────────────────────────────────────────────
 function initGame(){
+  sizeCanvas();
   const sx=5,sy=5;
   G={
     map:genMap(sx,sy),
@@ -682,7 +711,7 @@ function endTurn(){
 // ── RENDER ───────────────────────────────────────────────────
 const canvas=document.getElementById('map');
 const ctx=canvas.getContext('2d');
-canvas.width=VW;canvas.height=VH;
+sizeCanvas();
 
 function camXY(){
   const tw=Math.floor(VW/TS),th=Math.floor(VH/TS);
@@ -858,14 +887,21 @@ function setBanner(t){const b=document.getElementById('mode-banner');b.textConte
 function clearBanner(){document.getElementById('mode-banner').classList.remove('on')}
 
 // ── EVENTS ───────────────────────────────────────────────────
-canvas.addEventListener('click',e=>{
+function handleMapInput(clientX,clientY){
   const r=canvas.getBoundingClientRect();
+  const scaleX=canvas.width/r.width,scaleY=canvas.height/r.height;
   const{cx,cy}=camXY();
-  const tx=cx+Math.floor((e.clientX-r.left)/TS);
-  const ty=cy+Math.floor((e.clientY-r.top)/TS);
+  const tx=cx+Math.floor((clientX-r.left)*scaleX/TS);
+  const ty=cy+Math.floor((clientY-r.top)*scaleY/TS);
   if(tx<0||tx>=MW||ty<0||ty>=MH)return;
   tryMove(tx,ty);
-});
+}
+canvas.addEventListener('click',e=>handleMapInput(e.clientX,e.clientY));
+canvas.addEventListener('touchend',e=>{
+  e.preventDefault();
+  const t=e.changedTouches[0];
+  handleMapInput(t.clientX,t.clientY);
+},{passive:false});
 
 document.getElementById('btn-end').onclick=endTurn;
 document.getElementById('btn-convert').onclick=openConvert;
