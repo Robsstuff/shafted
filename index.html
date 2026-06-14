@@ -233,9 +233,9 @@ function genMap(sx,sy){
   place(T.LAVA,10,9);
   place(T.MINING_CAMP,10,7);
   place(T.ENEMY_LAIR,14,9);
-  place(T.IRON,18,5);
-  place(T.COAL,16,5);
-  place(T.BRIMSTONE,16,6);
+  place(T.IRON,40,4);
+  place(T.COAL,40,4);
+  place(T.BRIMSTONE,35,5);
   place(T.GROVE,13,6);
   place(T.SHRINE,5,12);
 
@@ -255,7 +255,7 @@ function initGame(){
     map:genMap(sx,sy),
     rev:Array.from({length:MH},()=>new Array(MW).fill(false)),
     player:{x:sx,y:sy,inWater:false,gasDir:null},
-    dice:{picks:rollDice(10),hearts:rollDice(10),torches:[],dynamite:[],vines:[],weapons:[]},
+    dice:{picks:rollDice(10),hearts:rollDice(10),torches:rollDice(4),dynamite:rollDice(2),vines:[],weapons:[]},
     enemies:[],
     mode:'normal',   // normal|moving|torch|dynamite|combat|convert
     movement:0,
@@ -606,7 +606,18 @@ function tryMove(tx,ty){
   if(G.mode==='torch'){torchClick(tx,ty);return}
   if(G.mode==='dynamite'){dynamiteClick(tx,ty);return}
   if(G.mode==='combat')return;
-  if(G.mode==='normal'){log('Click a heart die to move, or use an item.','w');return}
+  if(G.mode==='normal'){
+    if(!G.dice.hearts.length){log('No hearts left!','r');checkDeath();return;}
+    // Auto-pick the lowest-value heart die
+    let minIdx=0;
+    G.dice.hearts.forEach((d,i)=>{if(d.v<G.dice.hearts[minIdx].v)minIdx=i;});
+    const d=G.dice.hearts[minIdx];
+    G.dice.hearts.splice(minIdx,1);
+    G.movement=d.v;
+    G.mode='moving';
+    log(`Moving (heart ${d.v}).`,'b');
+    redrawUI();
+  }
   if(G.movement<=0){log('No movement left. Use another heart or end turn.','w');return}
 
   const dx=tx-G.player.x,dy=ty-G.player.y;
